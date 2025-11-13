@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <link href="https://fonts.googleapis.com/css2?family=Arimo&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+</head>
+<body>
+
+  <h2>Modificar Data Pack WSC</h2>
+  <h3>Criado por Nait com IA</h3>
+  
+<div id="initialUpload" class="initial-upload">
+  <div class="upload-container">
+    <label class="file-upload-label">
+      <i class="fas fa-file-archive"></i>
+      <span>Escolher Arquivo ZIP</span>
+      <input type="file" id="zipInput" accept=".zip" class="file-upload-input" />
+    </label>
+    <label class="file-upload-label" style="margin-left: 10px;">
+      <i class="fas fa-file-archive"></i>
+      <span>Escolher Arquivo ZIP 1998</span>
+      <input type="file" id="zipInput1998" accept=".zip" class="file-upload-input" />
+    </label>
+    <p class="upload-hint">Selecione o arquivo ZIP do data pack para começar</p>
+  </div>
+</div>
+
+  <div id="mainControls" class="controls" style="display: none;">
+    <div class="controls-section">
+      <div class="row">
+        <label>Tabela:
+          <select id="selectTable">
+            <option value="clubs">Clubs</option>
+            <option value="competitions">Competitions</option>
+            <option value="players">Players</option>
+            <option value="adboards">Adboards</option>
+          </select>
+        </label>
+
+        <button onclick="loadTable()" class="btn-load">
+          <i class="fas fa-table"></i> Carregar
+        </button>
+      </div>
+
+      <div class="row">
+        <button onclick="toggleFilters()" class="btn-filter">
+          <i class="fas fa-filter"></i> Filtro
+        </button>
+<button id="addRowBtn" onclick="addNewRow()" class="btn-add" style="display:none;">
+  <i class="fas fa-plus"></i> Add Existing Competition That Does Not Appear 
+</button>
+
+        <div id="filtersContainer" style="display:none; width:100%; margin-top:10px;">
+          <div class="filter-group">
+            <input type="text" id="filterId" placeholder="ID" oninput="debounceRenderTable()">
+            <input type="text" id="filterNome" placeholder="Nome" oninput="debounceRenderTable()">
+          </div>
+
+<div id="playerFilters" class="filter-group" style="display:none;">
+  <input type="text" id="filterTeamName" placeholder="Nome do Time" oninput="debounceRenderTable()">
+  <input type="text" id="filterTeamId" placeholder="ID do Time" oninput="debounceRenderTable()">
+  <input type="text" id="filterPosition" placeholder="Posição" oninput="debounceRenderTable()">
+  <input type="text" id="filterCountry" placeholder="País" oninput="debounceRenderTable()">
+  <input type="text" id="filterMaxOverall" placeholder="Overall Máximo" oninput="debounceRenderTable()" min="0" max="99">
+</div>
+          
+          <div id="clubFilters" class="filter-group" style="display:none;">
+            <input type="text" id="filterStadiumId" placeholder="ID do Estádio" oninput="debounceRenderTable()">
+            <input type="text" id="filterStadiumName" placeholder="Nome do Estádio" oninput="debounceRenderTable()">
+            <input type="text" id="filterClubCountry" placeholder="País do Clube" oninput="debounceRenderTable()">
+            <input type="text" id="filterClubCompetition" placeholder="Competição" oninput="debounceRenderTable()">
+          </div>
+
+          <div id="competitionFilters" class="filter-group" style="display:none;">
+            <input type="text" id="filterCompetitionCountry" placeholder="País" oninput="debounceRenderTable()">
+          </div>
+
+          <div id="adboardFilters" class="filter-group" style="display:none;">
+            <input type="text" id="filterFolderName" placeholder="Nome da Pasta" oninput="debounceRenderTable()">
+          </div>
+        </div>
+      </div>
+
+      <label>Linhas por página:
+        <select id="rowsPerPage" onchange="renderTable()">
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="200">200</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row">
+      <button id="addLegendsBtn" onclick="addLegends()" class="btn-legends">
+        <i class="fas fa-crown"></i> Adicionar Lendas
+      </button>
+      <button onclick="saveZip()" class="btn-save">
+        <i class="fas fa-save"></i> Salvar ZIP
+    </div>
+  </div>
+
+  <div id="tableContainer"></div>
+  <div class="pagination" id="paginationContainer"></div>
+        </button>
+      <button id="toggleThemeBtn" onclick="toggleTheme()" class="btn-theme">
+        <i class="fas fa-moon"></i> Modo Escuro
+      </button>
+      <button onclick="debugStadiumChanges()" class="btn-debug" style="margin-left: 10px;">
+  <i class="fas fa-bug"></i> Debug Estádios
+</button>
+
+<script>let is1998Mode = false;
+let zip;
+let SQL;
+let db;
+let dataFiles = {};
+let playersStats = {};
+let clubsMap = {};
+let stadiumsMap = {};
+let clubStadiumMap = {};
+let clubCountryMap = {};
+let positionsMap = {};
+let currentPage = 1;
+let filteredData = [];
+let currentSortKey = '';
+let sortDirection = 1;
+let renderTimeout = null;
+let countriesMap = {};
+let adboardsData = [];
+const ageCache = new Map();
+let clubsRating = {};
+let competitionCountryMap = {};
+let clubCompetitionMap = {};
+
+// OTIMIZAÇÃO: Cache mais eficiente com limites
+const imageCache = new Map();
+const MAX_IMAGE_CACHE = 200;
+const imageCacheKeys = [];
+
+// OTIMIZAÇÃO: Pre-computar índices para busca rápida
+let searchIndices = {
+  players: new Map(),
+  clubs: new Map(),
+  competitions: new Map()
+};
+
+// OTIMIZAÇÃO: Pool de elementos DOM reutilizáveis
+const elementPool = {
+  inputs: [],
+  buttons: [],
+  cells: []
+};
+
+const legends = [
+  "634800001,Zé Rato",
+  "890400001,Rivazildo",
+  "890400003,Victor Robles",
+  "890400004,Jean Battiston",
+  "890400005,Gianluca Gori",
+  "890400006,Neil Morris",
+  "890400007,M. Carlinhos",
+  "890400008,Brian de Wit",
+  "890400009,Ken Hughes",
+  "890400010,Airton Junior",
+  "890400011,Angel Medina",
+  "890400012,Max Mineiro",
+  "890400013,Ko Sun-hyuk",
+  "890400015,Zuca Tigrão",
+  "890400016,Julian Barreto",
+  "890400017,Diego Cardenas",
+  "890400018,Andrea Crimi",
+  "890400019,Uwe Zieler",
+  "890400020,Adam Kaminski",
+  "890400021,George Willems",
+  "890400022,Sam Alonso",
+  "890400023,W. Poirreaux",
+  "890400024,I. Narimán",
+  "890400025,Chipi Guzmán",
+  "890400026,N. Ganjavi",
+  "890400027,Marcus Jagger",
+  "890400028,R. Skonderoviç",
+  "890400029,S. McHennicks",
+  "890400030,Kloter Zhelino",
+  "890400031,M. Panjaitani",
+  "890400032,Saladin",
+  "890400033,Raj Ramunajan",
+  "890400034,J. L. González",
+  "890400035,Sam Häyhäänen",
+  "890400036,H. Ayala",
+  "890400037,V. Bakambi",
+  "890400038,R. Chavo Pietro",
+  "890400039,Xao Shuan",
+  "890400040,Yuri Çalişkan",
+  "890400041,Nkembi",
+  "890400042,Lázaro",
+  "890400043,Paco Yupanqui"
+].map(item => item.split(','));
+
+const legends1998 = [
+  "890400025,Cristiano Ronaldo",
+  "890400022,Zézinho",
+  "890400023,Jan Lagerlöf",
+  "890400005,Ilya Matvitenko",
+  "890400006,Turan Naghiyev",
+  "890400014,Vedran Režić",
+  "890400007,Alejandro Molina",
+  "890400009,Felipe Espejo",
+  "890400015,Tomas Tizzano",
+  "890400017,Ju Ferreira",
+  "890400020,Giorgio Giacoia",
+  "890400026,Andrés Iniesta",
+  "890400028,Kaká",
+  "890400004,Felipe",
+  "890400008,Luiz Otávio",
+  "890400011,Nguema Choni",
+  "890400012,Ermis Mastakas",
+  
+  "890400016,Kenji Koshiro",
+  "890400021,C. Atkinson",
+  "890400027,Philipp Lahm",
+  "890400029,Wayne Rooney",
+  "890400003,Sergei Jovic",
+  "890400019,Mark Vincent",
+  "890400002,Kike Huanaquiri",
+  "890400013,Jarder Lauriano",
+  "890400018,Abdul Al-Saiful",
+  "890400010,Ali Nurmanov",
+  "890400024,Maui Bernard",
+  "890400030,Adriano Imperador"
+].map(item => item.split(','));
+
+const missingCompetitions = [
+  "100000,Champions League",
+  "100001,Europa League",
+  "100002,Premier League",
+  "100003,La Liga",
+  "100004,Serie A",
+  "100005,Bundesliga",
+  "100006,Ligue 1",
+  "100007,Copa Libertadores",
+  "100008,Copa do Brasil",
+  "100009,Campeonato Brasileiro Série A"
+].map(item => item.split(','));
+
+const missingCompetitions1998 = [
+  "100010,UEFA Champions League 1998",
+  "100011,UEFA Cup 1998",
+  "100012,Premier League 1998",
+  "100013,La Liga 1998",
+  "100014,Serie A 1998",
+  "100015,Bundesliga 1998"
+].map(item => item.split(','));
+
+let isDarkMode = localStorage.getItem('darkMode') === 'true';
+
+// Aplicar modo escuro se estava ativado
+if (isDarkMode) {
+  document.body.classList.add('dark-mode');
+  document.getElementById('toggleThemeBtn').innerHTML = '<i class="fas fa-sun"></i> Modo Claro';
+}
+
+// OTIMIZAÇÃO: Debounce mais eficiente com requestIdleCallback
+function debounceRenderTable() {
+  if (renderTimeout) clearTimeout(renderTimeout);
+  renderTimeout = setTimeout(() => {
+    currentPage = 1;
+    // Usar requestIdleCallback se disponível
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(() => renderTable(), { timeout: 200 });
+    } else {
+      requestAnimationFrame(() => renderTable());
+    }
+  }, 300); // Reduzido de 500ms para 300ms para resposta mais rápida
+}
+
+// OTIMIZAÇÃO: Gerenciamento eficiente de cache de imagens
+function addToImageCache(key, value) {
+  if (imageCache.size >= MAX_IMAGE_CACHE) {
+    const oldestKey = imageCacheKeys.shift();
+    const oldUrl = imageCache.get(oldestKey);
+    if (oldUrl && oldUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(oldUrl);
+    }
+    imageCache.delete(oldestKey);
+  }
+  imageCache.set(key, value);
+  imageCacheKeys.push(key);
+}
+
+// Inicializar SQL.js
+async function initSQL() {
+  if (SQL) return SQL;
+  
+  try {
+    const sqlJs = await initSqlJs({
+      locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+    });
+    return sqlJs;
+  } catch (error) {
+    console.error('Erro ao carregar SQL.js:', error);
+    throw error;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  try {
+    SQL = await initSQL();
+    
+    // OTIMIZAÇÃO: Carregar em paralelo
+    const [positionsResponse, mainDbResponse] = await Promise.all([
+      fetch('positions.csv'),
+      fetch('main.db').catch(() => null)
+    ]);
+    
+    const positionsData = await positionsResponse.text();
+    
+    positionsMap = {};
+    Papa.parse(positionsData, { header: false, skipEmptyLines: true }).data.forEach(row => {
+      if (row.length >= 2 && row[0]) positionsMap[row[0]] = row[1];
+    });
+    
+    // Carregar países se main.db disponível
+    if (mainDbResponse) {
+      const mainDbBuffer = await mainDbResponse.arrayBuffer();
+      const mainDb = new SQL.Database(new Uint8Array(mainDbBuffer));
+      
+      const countriesResult = mainDb.exec("SELECT ID, Name FROM Country");
+      if (countriesResult.length > 0) {
+        countriesResult[0].values.forEach(row => {
+          const [id, name] = row;
+          countriesMap[id] = name;
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Erro ao carregar arquivos:', error);
+  }
+  // Ajustar visibilidade de filtros conforme seleção inicial
+  updateFilterVisibility();
+});
+
+document.getElementById('selectTable').addEventListener('change', function() {
+  const showAddBtn = this.value === 'competitions';
+  document.getElementById('addRowBtn').style.display = showAddBtn ? 'inline-block' : 'none';
+  document.getElementById('addLegendsBtn').style.display = this.value === 'players' ? 'inline-block' : 'none';
+  
+  const isPlayers = this.value === 'players';
+  const isClubs = this.value === 'clubs';
+  const isCompetitions = this.value === 'competitions';
+  const isAdboards = this.value === 'adboards';
+  
+  // Sempre atualizar a visibilidade dos filtros quando trocar de aba
+  document.getElementById('playerFilters').style.display = isPlayers ? 'flex' : 'none';
+  document.getElementById('clubFilters').style.display = isClubs ? 'flex' : 'none';
+  document.getElementById('competitionFilters').style.display = isCompetitions ? 'flex' : 'none';
+  document.getElementById('adboardFilters').style.display = isAdboards ? 'flex' : 'none';
+  
+  // Se os filtros estiverem abertos, renderizar a tabela para aplicar filtros corretos
+  if (filtersVisible) {
+    debounceRenderTable();
+  }
+});
+
+document.getElementById('zipInput1998').addEventListener('change', async (e) => {
+  is1998Mode = true;
+  await handleZipUpload(e);
+});
+
+document.getElementById('zipInput').addEventListener('change', async (e) => {
+  is1998Mode = false;
+  await handleZipUpload(e);
+});
+
+async function handleZipUpload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const uploadLabel = e.target.parentElement.querySelector('span');
+  uploadLabel.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Carregando...';
+  
+  try {
+    zip = await JSZip.loadAsync(file);
+    
+    // OTIMIZAÇÃO: Carregar arquivos em paralelo
+    const csvNames = ['clubs.csv','competitions.csv','players.csv','stadiums.csv'];
+    
+    const csvPromises = csvNames.map(async name => {
+      const fileInZip = zip.file(name);
+      if (fileInZip) {
+        const content = await fileInZip.async('string');
+        return { name: name.replace('.csv',''), data: Papa.parse(content, { header: false, skipEmptyLines: true }).data };
+      }
+      return null;
+    });
+    
+    const results = await Promise.all(csvPromises);
+    results.forEach(result => {
+      if (result) dataFiles[result.name] = result.data;
+    });
+    
+    await loadAdboardsData();
+    
+    const dbFileName = is1998Mode ? 'template_1998.db' : 'template.db';
+    try {
+      const response = await fetch(dbFileName);
+      const dbBuffer = await response.arrayBuffer();
+      db = new SQL.Database(new Uint8Array(dbBuffer));
+    } catch (error) {
+      throw new Error(`Arquivo ${dbFileName} não encontrado no projeto`);
+    }
+    
+    await buildMappingsFromDB();
+    
+    document.getElementById('initialUpload').style.display = 'none';
+    document.getElementById('mainControls').style.display = 'block';
+    uploadLabel.innerHTML = `<i class="fas fa-check"></i> ${file.name}`;
+    setTimeout(() => alert(`ZIP carregado com sucesso! Modo ${is1998Mode ? '1998' : 'normal'} ativado.`), 300);
+  } catch (error) {
+    uploadLabel.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Erro ao carregar';
+    console.error('Error loading ZIP:', error);
+    alert('Erro ao carregar o arquivo ZIP: ' + error.message);
+  }
+}
+
+// OTIMIZAÇÃO: Carregar adboards de forma mais eficiente
+async function loadAdboardsData() {
+  adboardsData = [];
+  
+  const adboardsFolder = zip.folder('adboards');
+  if (!adboardsFolder) return;
+  
+  const foldersSet = new Set();
+  const files = [];
+  
+  adboardsFolder.forEach((relativePath, file) => {
+    if (file.dir) return;
+    
+    const extension = relativePath.split('.').pop().toLowerCase();
+    if (['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(extension)) {
+      const pathParts = relativePath.split('/');
+      const folderName = pathParts[0];
+      const fileName = pathParts[pathParts.length - 1];
+      
+      foldersSet.add(folderName);
+      
+      files.push({
+        id: `${folderName}/${fileName}`,
+        folderName: folderName,
+        fileName: fileName,
+        fullPath: `adboards/${relativePath}`,
+        name: fileName
+      });
+    }
+  });
+  
+  adboardsData = files;
+}
+
+async function buildMappingsFromDB() {
+  clubsMap = {};
+  stadiumsMap = {};
+  playersStats = {};
+  clubStadiumMap = {};
+  clubCountryMap = {};
+  clubsRating = {};
+  competitionCountryMap = {};
+  clubCompetitionMap = {};
+  
+  if (dataFiles['clubs']) {
+    dataFiles['clubs'].forEach(club => {
+      if (club.length >= 2 && club[0]) {
+        clubsMap[club[0]] = club[1];
+      }
+    });
+  }
+  
+  // CORREÇÃO CRÍTICA: Agora o ID do estádio é o mesmo ID do clube
+  if (dataFiles['stadiums']) {
+    dataFiles['stadiums'].forEach(stadium => {
+      if (stadium.length >= 2 && stadium[0]) {
+        stadiumsMap[stadium[0]] = stadium[1];
+      }
+    });
+  }
+  
+  // OTIMIZAÇÃO: Executar queries do DB em paralelo quando possível
+  try {
+    const clubStadiumResult = db.exec("SELECT id, StadiumID FROM Club");
+    if (clubStadiumResult.length > 0) {
+      clubStadiumResult[0].values.forEach(row => {
+        const [clubId, stadiumId] = row;
+        clubStadiumMap[clubId] = stadiumId;
+        
+        // CORREÇÃO: Se não existe estádio no CSV para este clube, criar um
+        if (!stadiumsMap[clubId] && dataFiles['stadiums']) {
+          // Usar o ID do clube como ID do estádio
+          stadiumsMap[clubId] = clubsMap[clubId] || `Estádio ${clubId}`;
+          // Adicionar ao dataFiles stadiums
+          dataFiles['stadiums'].push([clubId, stadiumsMap[clubId]]);
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Erro ao carregar Club-Stadium do DB:', error);
+  }
+  
+  try {
+    const clubCountryResult = db.exec("SELECT id, CountryID FROM Club");
+    if (clubCountryResult.length > 0) {
+      clubCountryResult[0].values.forEach(row => {
+        const [clubId, countryId] = row;
+        clubCountryMap[clubId] = countryId;
+      });
+    }
+  } catch (error) {
+    console.error('Erro ao carregar Club-Country do DB:', error);
+  }
+  
+  try {
+    const clubsRatingResult = db.exec("SELECT id, ratingOVR FROM Club");
+    if (clubsRatingResult.length > 0) {
+      clubsRatingResult[0].values.forEach(row => {
+        const [clubId, rating] = row;
+        clubsRating[clubId] = rating;
+      });
+    }
+  } catch (error) {
+    console.error('Erro ao carregar ratings dos clubes do DB:', error);
+  }
+  
+  try {
+    const playersResult = db.exec("SELECT id, ClubID, Rating, RatingPotential, PrimaryTacticRole, CountryID, DOB FROM Player");
+    if (playersResult.length > 0) {
+      playersResult[0].values.forEach(row => {
+        const [id, clubId, rating, potential, positionId, countryId, dob] = row;
+        playersStats[id] = {
+          overall: rating,
+          team_id: clubId,
+          potential: potential,
+          position_id: positionId,
+          country_id: countryId,
+          dob: dob
+        };
+      });
+    }
+  } catch (error) {
+    console.error('Erro ao carregar jogadores do DB:', error);
+  }
+  
+  // Carregar CountryID das competições
+  try {
+    const competitionCountryResult = db.exec("SELECT id, CountryID FROM Competition");
+    if (competitionCountryResult.length > 0) {
+      competitionCountryResult[0].values.forEach(row => {
+        const [competitionId, countryId] = row;
+        competitionCountryMap[competitionId] = countryId;
+      });
+    }
+  } catch (error) {
+    console.error('Erro ao carregar Competition-Country do DB:', error);
+  }
+  
+  // Carregar CompetitionStageClub e CompetitionStage para mapear clube -> competições (múltiplas)
+  try {
+    // Primeiro, mapear StageID -> CompetitionID
+    const stageCompMap = {};
+    const compStageResult = db.exec("SELECT id, CompetitionID FROM CompetitionStage");
+    if (compStageResult.length > 0) {
+      compStageResult[0].values.forEach(row => {
+        const [stageId, competitionId] = row;
+        stageCompMap[stageId] = competitionId;
+      });
+    }
+    
+    // Agora, mapear ClubID -> [CompetitionIDs] usando CompetitionStageClub (múltiplas competições)
+    const clubStageResult = db.exec("SELECT ClubID, StageID FROM CompetitionStageClub");
+    if (clubStageResult.length > 0) {
+      clubStageResult[0].values.forEach(row => {
+        const [clubId, stageId] = row;
+        const competitionId = stageCompMap[stageId];
+        if (competitionId) {
+          if (!clubCompetitionMap[clubId]) {
+            clubCompetitionMap[clubId] = [];
+          }
+          // Adicionar apenas se não estiver já na lista (evitar duplicatas)
+          if (!clubCompetitionMap[clubId].includes(competitionId)) {
+            clubCompetitionMap[clubId].push(competitionId);
+          }
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Erro ao carregar Competition do Club do DB:', error);
+  }
+}
+
+// Função para buscar nome da competição (primeiro no CSV, depois no DB template)
+function getCompetitionName(competitionId) {
+  if (!competitionId) return '-';
+  
+  // 1. Primeiro tentar buscar no CSV competitions.csv (se existir)
+  if (dataFiles['competitions']) {
+    const competition = dataFiles['competitions'].find(c => c[0] === competitionId);
+    if (competition && competition[1]) {
+      return competition[1];
+    }
+  }
+  
+  // 2. Se não encontrou no CSV, buscar no template (Competition.Name)
+  try {
+    const result = db.exec("SELECT Name FROM Competition WHERE id = ?", [competitionId]);
+    if (result.length > 0 && result[0].values.length > 0) {
+      return result[0].values[0][0] || '-';
+    }
+  } catch (error) {
+    console.error('Erro ao buscar nome da competição no DB:', error);
+  }
+  
+  return '-';
+}
+
+// OTIMIZAÇÃO: Cache de idade mais eficiente
+function calculateAge(dob) {
+  if (!dob) return '-';
+  
+  const cacheKey = `${dob}_${is1998Mode}`;
+  if (ageCache.has(cacheKey)) {
+    return ageCache.get(cacheKey);
+  }
+  
+  const dobStr = dob.toString();
+  if (dobStr.length < 8) return '-';
+  
+  const year = parseInt(dobStr.substring(0, 4));
+  const month = parseInt(dobStr.substring(4, 6)) - 1;
+  const day = parseInt(dobStr.substring(6, 8));
+  
+  const referenceDate = is1998Mode ? new Date(1999, 0, 1) : new Date();
+  const birthDate = new Date(year, month, day);
+  let age = referenceDate.getFullYear() - birthDate.getFullYear();
+  
+  const monthDiff = referenceDate.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && referenceDate.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  
+  ageCache.set(cacheKey, age);
+  return age;
+}
+
+function loadTable() {
+  currentPage = 1;
+  renderTable();
+}
+
+let filtersVisible = false;
+
+function updateFilterVisibility() {
+  const selected = document.getElementById('selectTable').value;
+  const isPlayers = selected === 'players';
+  const isClubs = selected === 'clubs';
+  const isCompetitions = selected === 'competitions';
+  const isAdboards = selected === 'adboards';
+  document.getElementById('playerFilters').style.display = isPlayers ? 'flex' : 'none';
+  document.getElementById('clubFilters').style.display = isClubs ? 'flex' : 'none';
+  document.getElementById('competitionFilters').style.display = isCompetitions ? 'flex' : 'none';
+  document.getElementById('adboardFilters').style.display = isAdboards ? 'flex' : 'none';
+}
+
+function toggleFilters() {
+  filtersVisible = !filtersVisible;
+  const container = document.getElementById('filtersContainer');
+  container.style.display = filtersVisible ? 'block' : 'none';
+  if (filtersVisible) updateFilterVisibility();
+}
+
+// OTIMIZAÇÃO: Carregar dados com memoização
+function loadTableData(selected) {
+  filteredData = [];
+  
+  if (selected === 'players' && dataFiles['players']) {
+    // OTIMIZAÇÃO: Filtrar apenas jogadores existentes no DB de forma mais eficiente
+    const playerStatsKeys = new Set(Object.keys(playersStats));
+    filteredData = dataFiles['players']
+      .filter(row => playerStatsKeys.has(row[0]))
+      .map(row => ({
+        id: row[0],
+        name: row[1],
+        original: row
+      }));
+  } else if (selected === 'clubs' && dataFiles['clubs']) {
+    filteredData = dataFiles['clubs'].map(row => ({
+      id: row[0],
+      name: row[1],
+      original: row
+    }));
+  } else if (selected === 'competitions' && dataFiles['competitions']) {
+    filteredData = dataFiles['competitions'].map(row => ({
+      id: row[0],
+      name: row[1],
+      original: row
+    }));
+  } else if (selected === 'adboards') {
+    filteredData = adboardsData.map(item => ({
+      id: item.id,
+      name: item.name,
+      folderName: item.folderName,
+      fileName: item.fileName,
+      fullPath: item.fullPath,
+      original: item
+    }));
+  }
+}
+
+function applyFilters(selected) {
+  const filterId = document.getElementById('filterId').value.toLowerCase();
+  const filterNome = document.getElementById('filterNome').value.toLowerCase();
+  
+  // OTIMIZAÇÃO: Retornar cedo se não há filtros
+  if (!filterId && !filterNome) {
+    // Verificar filtros específicos
+    const hasPlayerFilters = selected === 'players' && (
+      document.getElementById('filterTeamName')?.value ||
+      document.getElementById('filterTeamId')?.value ||
+      document.getElementById('filterPosition')?.value ||
+      document.getElementById('filterCountry')?.value ||
+      document.getElementById('filterMaxOverall')?.value
+    );
+    
+    const hasClubFilters = selected === 'clubs' && (
+      document.getElementById('filterStadiumId')?.value ||
+      document.getElementById('filterStadiumName')?.value ||
+      document.getElementById('filterClubCountry')?.value ||
+      document.getElementById('filterClubCompetition')?.value
+    );
+    
+    const hasCompetitionFilters = selected === 'competitions' &&
+      document.getElementById('filterCompetitionCountry')?.value;
+    
+    const hasAdboardFilters = selected === 'adboards' &&
+      document.getElementById('filterFolderName')?.value;
+    
+    if (!hasPlayerFilters && !hasClubFilters && !hasCompetitionFilters && !hasAdboardFilters) {
+      return;
+    }
+  }
+  
+  const filterTeamName = document.getElementById('filterTeamName')?.value.toLowerCase() || '';
+  const filterTeamId = document.getElementById('filterTeamId')?.value.toLowerCase() || '';
+  const filterPosition = document.getElementById('filterPosition')?.value.toLowerCase() || '';
+  const filterCountry = document.getElementById('filterCountry')?.value.toLowerCase() || '';
+  const filterMaxOverall = document.getElementById('filterMaxOverall')?.value;
+  const filterStadiumId = document.getElementById('filterStadiumId')?.value.toLowerCase() || '';
+  const filterStadiumName = document.getElementById('filterStadiumName')?.value.toLowerCase() || '';
+  const filterClubCountry = document.getElementById('filterClubCountry')?.value.toLowerCase() || '';
+  const filterClubCompetition = document.getElementById('filterClubCompetition')?.value.toLowerCase() || '';
+  const filterCompetitionCountry = document.getElementById('filterCompetitionCountry')?.value.toLowerCase() || '';
+  const filterFolderName = document.getElementById('filterFolderName')?.value.toLowerCase() || '';
+  
+  filteredData = filteredData.filter(item => {
+    const id = item.id.toString();
+    const nome = item.name.toString();
+    
+    if (filterId && id !== filterId) return false;
+    if (filterNome && !nome.toLowerCase().includes(filterNome)) return false;
+    
+    if (selected === 'players') {
+      const stats = playersStats[item.id] || {};
+      
+      if (filterTeamName || filterTeamId) {
+        const teamId = stats.team_id || '';
+        const teamName = clubsMap[teamId] || '';
+        if (filterTeamName && !teamName.toLowerCase().includes(filterTeamName)) return false;
+        if (filterTeamId && teamId !== filterTeamId) return false;
+      }
+      
+      if (filterPosition) {
+        const positionName = positionsMap[stats.position_id] || '';
+        if (!positionName.toLowerCase().includes(filterPosition)) return false;
+      }
+      
+      if (filterCountry) {
+        const countryName = countriesMap[stats.country_id] || '';
+        if (!countryName.toLowerCase().includes(filterCountry)) return false;
+      }
+      
+      // FILTRO: Overall Máximo
+      if (filterMaxOverall) {
+        const playerOverall = parseInt(stats.overall || '0');
+        const maxOverall = parseInt(filterMaxOverall);
+        if (playerOverall > maxOverall) return false;
+      }
+    }
+    
+    if (selected === 'clubs') {
+      if (filterStadiumId || filterStadiumName) {
+        // CORREÇÃO: O ID do estádio é o mesmo ID do clube
+        const stadiumId = id; // Usar o ID do clube como ID do estádio
+        const stadiumName = stadiumsMap[stadiumId] || '';
+        if (filterStadiumId && stadiumId !== filterStadiumId) return false;
+        if (filterStadiumName && !stadiumName.toLowerCase().includes(filterStadiumName)) return false;
+      }
+      
+      if (filterClubCountry) {
+        const countryId = clubCountryMap[id] || '';
+        const countryName = countriesMap[countryId] || '';
+        if (!countryName.toLowerCase().includes(filterClubCountry)) return false;
+      }
+      
+      if (filterClubCompetition) {
+        const competitionIds = clubCompetitionMap[id] || [];
+        const competitionNames = competitionIds.map(compId => getCompetitionName(compId)).join(', ');
+        if (!competitionNames.toLowerCase().includes(filterClubCompetition)) return false;
+      }
+    }
+    
+    if (selected === 'competitions') {
+      if (filterCompetitionCountry) {
+        const countryId = competitionCountryMap[id] || '';
+        const countryName = countriesMap[countryId] || '';
+        if (!countryName.toLowerCase().includes(filterCompetitionCountry)) return false;
+      }
+    }
+    
+    if (selected === 'adboards' && filterFolderName) {
+      const folderName = item.folderName || '';
+      if (!folderName.toLowerCase().includes(filterFolderName)) return false;
+    }
+    
+    return true;
+  });
+}
+
+// OTIMIZAÇÃO: Ordenação otimizada
+function applySort() {
+  const selected = document.getElementById('selectTable').value;
+  if (!currentSortKey || !filteredData.length) return;
+
+  // OTIMIZAÇÃO: Pre-computar valores de ordenação uma única vez
+  const sortValues = filteredData.map(item => {
+    const id = item.id.toString();
+    const stats = selected === 'players' ? (playersStats[id] || {}) : {};
+    
+    switch(currentSortKey) {
+      case 'id': return id;
+      case 'name': return item.name.toString().toLowerCase();
+      case 'overall': return parseInt(stats.overall || '0');
+      case 'potential': return parseInt(stats.potential || '0');
+      case 'position': 
+        return selected === 'players' ? (positionsMap[stats.position_id] || '').toLowerCase() : '';
+      case 'team': 
+        return selected === 'players' ? (clubsMap[stats.team_id] || '').toLowerCase() : '';
+      case 'teamId': return stats.team_id || '';
+      case 'country': 
+        return selected === 'players' ? (countriesMap[stats.country_id] || '').toLowerCase() : '';
+      case 'age': 
+        return selected === 'players' ? calculateAge(stats.dob) : 0;
+      case 'stadiumId': 
+        return selected === 'clubs' ? id : ''; // CORREÇÃO: ID do estádio = ID do clube
+      case 'stadiumName': 
+        return selected === 'clubs' ? (stadiumsMap[id] || '').toLowerCase() : ''; // CORREÇÃO
+      case 'clubCountry':
+        return selected === 'clubs' ? (countriesMap[clubCountryMap[id]] || '').toLowerCase() : '';
+      case 'rating':
+        return selected === 'clubs' ? parseInt(clubsRating[id] || '0') : 0;
+      case 'clubCompetition':
+        if (selected === 'clubs') {
+          const competitionIds = clubCompetitionMap[id] || [];
+          const competitionNames = competitionIds.map(compId => getCompetitionName(compId)).join(', ');
+          return competitionNames.toLowerCase();
+        }
+        return '';
+      case 'competitionCountry':
+        return selected === 'competitions' ? (countriesMap[competitionCountryMap[id]] || '').toLowerCase() : '';
+      case 'folderName':
+        return selected === 'adboards' ? (item.folderName || '').toLowerCase() : '';
+      default: return '';
+    }
+  });
+
+  // OTIMIZAÇÃO: Ordenar com índices para evitar múltiplas buscas
+  const indices = Array.from(filteredData.keys());
+  indices.sort((a, b) => {
+    const valueA = sortValues[a];
+    const valueB = sortValues[b];
+    
+    if (typeof valueA === 'number') return (valueA - valueB) * sortDirection;
+    return String(valueA).localeCompare(String(valueB)) * sortDirection;
+  });
+  
+  filteredData = indices.map(i => filteredData[i]);
+}
+
+function renderPagination(rowsPerPage) {
+  const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+  const container = document.getElementById('paginationContainer');
+  
+  // OTIMIZAÇÃO: Usar DocumentFragment para batch updates
+  const fragment = document.createDocumentFragment();
+
+  if (totalPages <= 1) {
+    const pageInfo = document.createElement('span');
+    pageInfo.innerText = `Total: ${filteredData.length} itens`;
+    fragment.appendChild(pageInfo);
+    container.innerHTML = '';
+    container.appendChild(fragment);
+    return;
+  }
+
+  const prevBtn = document.createElement('button');
+  prevBtn.innerHTML = '&laquo;';
+  prevBtn.disabled = currentPage === 1;
+  prevBtn.onclick = () => {
+    if (currentPage > 1) {
+      currentPage--;
+      renderTable();
+    }
+  };
+  fragment.appendChild(prevBtn);
+
+  const maxVisiblePages = 5;
+  let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages/2));
+  let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+
+  if (endPage - startPage + 1 < maxVisiblePages) {
+    startPage = Math.max(1, endPage - maxVisiblePages + 1);
+  }
+
+  if (startPage > 1) {
+    const firstBtn = document.createElement('button');
+    firstBtn.innerText = '1';
+    firstBtn.onclick = () => { currentPage = 1; renderTable(); };
+    fragment.appendChild(firstBtn);
+
+    if (startPage > 2) {
+      const ellipsis = document.createElement('span');
+      ellipsis.innerText = '...';
+      ellipsis.style.padding = '0 10px';
+      fragment.appendChild(ellipsis);
+    }
+  }
+
+  for (let i = startPage; i <= endPage; i++) {
+    const btn = document.createElement('button');
+    btn.innerText = i;
+    btn.disabled = i === currentPage;
+    btn.onclick = () => { currentPage = i; renderTable(); };
+    fragment.appendChild(btn);
+  }
+
+  if (endPage < totalPages) {
+    if (endPage < totalPages - 1) {
+      const ellipsis = document.createElement('span');
+      ellipsis.innerText = '...';
+      ellipsis.style.padding = '0 10px';
+      fragment.appendChild(ellipsis);
+    }
+
+    const lastBtn = document.createElement('button');
+    lastBtn.innerText = totalPages;
+    lastBtn.onclick = () => { currentPage = totalPages; renderTable(); };
+    fragment.appendChild(lastBtn);
+  }
+
+  const nextBtn = document.createElement('button');
+  nextBtn.innerHTML = '&raquo;';
+  nextBtn.disabled = currentPage === totalPages;
+  nextBtn.onclick = () => {
+    if (currentPage < totalPages) {
+      currentPage++;
+      renderTable();
+    }
+  };
+  fragment.appendChild(nextBtn);
+
+  const pageInfo = document.createElement('span');
+  pageInfo.style.marginLeft = '10px';
+  pageInfo.innerText = `Página ${currentPage} de ${totalPages} | Total: ${filteredData.length} itens`;
+  fragment.appendChild(pageInfo);
+  
+  container.innerHTML = '';
+  container.appendChild(fragment);
+}
+
+function addLegends() {
+  if (!dataFiles['players']) dataFiles['players'] = [];
+  
+  const currentLegends = is1998Mode ? legends1998 : legends;
+  const existingIds = new Set(dataFiles['players'].map(player => player[0]));
+  const legendsToAdd = currentLegends.filter(legend => !existingIds.has(legend[0]));
+  
+  if (legendsToAdd.length === 0) {
+    alert('Todas as lendas já estão adicionadas!');
+    return;
+  }
+  
+  dataFiles['players'] = dataFiles['players'].concat(legendsToAdd);
+  
+  alert(`${legendsToAdd.length} lendas ${is1998Mode ? '1998' : ''} adicionadas com sucesso!`);
+  renderTable();
+}
+
+// FUNÇÃO DE DEBUG PARA ESTÁDIOS
+function debugStadiumChanges() {
+  console.log('=== DEBUG STADIUMS ===');
+  console.log('Stadiums Map:', stadiumsMap);
+  console.log('Stadiums CSV:', dataFiles['stadiums']);
+  console.log('Clubs Map:', clubsMap);
+  
+  // Verificar correspondência entre clubes e estádios
+  const issues = [];
+  Object.keys(clubsMap).forEach(clubId => {
+    const stadiumName = stadiumsMap[clubId];
+    if (!stadiumName) {
+      issues.push(`Clube ${clubId} (${clubsMap[clubId]}) não tem estádio no CSV`);
+    }
+  });
+  
+  if (issues.length > 0) {
+    console.log('PROBLEMAS ENCONTRADOS:', issues);
+  } else {
+    console.log('Todos os clubes têm estádios correspondentes');
+  }
+  
+  alert('Debug de estádios executado. Verifique o console do navegador (F12) para ver os detalhes.');
+}
+
+// OTIMIZAÇÃO: Renderização de tabela altamente otimizada
+function renderTable() {
+  const selected = document.getElementById('selectTable').value;
+  
+  loadTableData(selected);
+  applyFilters(selected);
+  if (currentSortKey) applySort();
+  
+  const container = document.getElementById('tableContainer');
+  
+  // OTIMIZAÇÃO: Usar DocumentFragment para batch DOM updates
+  const fragment = document.createDocumentFragment();
+  const table = document.createElement('table');
+  const tbody = document.createElement('tbody');
+  
+  // Cabeçalho
+  const header = document.createElement('thead');
+  const headerRow = header.insertRow();
+
+  const createSortableHeader = (text, sortKey) => {
+    const th = document.createElement('th');
+    th.innerHTML = `${text} <i class="fas fa-sort${
+      currentSortKey === sortKey ? (sortDirection === 1 ? '-up' : '-down') : ''
+    }"></i>`;
+    th.style.cursor = 'pointer';
+    th.onclick = () => {
+      if (currentSortKey === sortKey) sortDirection *= -1;
+      else {
+        currentSortKey = sortKey;
+        sortDirection = 1;
+      }
+      currentPage = 1;
+      renderTable();
+    };
+    return th;
+  };
+
+  headerRow.appendChild(createSortableHeader('ID', 'id'));
+  headerRow.appendChild(createSortableHeader('Nome', 'name'));
+
+  if (selected === 'players') {
+    headerRow.appendChild(createSortableHeader('País', 'country'));
+    headerRow.appendChild(createSortableHeader('Idade', 'age'));
+    headerRow.appendChild(createSortableHeader('Posição', 'position'));
+    headerRow.appendChild(createSortableHeader('Overall', 'overall'));
+    headerRow.appendChild(createSortableHeader('Potencial', 'potential'));
+    headerRow.appendChild(createSortableHeader('Time', 'team'));
+    headerRow.appendChild(createSortableHeader('Time ID', 'teamId'));
+  }
+  
+  if (selected === 'clubs') {
+    headerRow.appendChild(createSortableHeader('País', 'clubCountry'));
+    headerRow.appendChild(createSortableHeader('Estádio ID', 'stadiumId'));
+    headerRow.appendChild(createSortableHeader('Nome do Estádio', 'stadiumName'));
+    headerRow.appendChild(createSortableHeader('Rating', 'rating'));
+    headerRow.appendChild(createSortableHeader('Competição', 'clubCompetition'));
+  }
+  
+  if (selected === 'competitions') {
+    headerRow.appendChild(createSortableHeader('País', 'competitionCountry'));
+  }
+  
+  if (selected === 'adboards') {
+    headerRow.appendChild(createSortableHeader('Pasta', 'folderName'));
+  }
+  
+  if (selected === 'clubs' || selected === 'competitions' || selected === 'adboards') {
+    const th = document.createElement('th');
+    th.innerText = 'Imagem';
+    headerRow.appendChild(th);
+  }
+  
+  table.appendChild(header);
+  
+  // Botão de reset de ordenação
+  if (currentSortKey) {
+    const resetRow = tbody.insertRow();
+    const resetCell = resetRow.insertCell();
+    resetCell.colSpan = headerRow.cells.length;
+    const resetButton = document.createElement('button');
+    resetButton.innerHTML = '<i class="fas fa-undo"></i> Desfazer Ordenação';
+    resetButton.className = 'btn-reset';
+    resetButton.onclick = () => {
+      currentSortKey = '';
+      sortDirection = 1;
+      renderTable();
+    };
+    resetCell.appendChild(resetButton);
+  }
+  
+  const rowsPerPage = parseInt(document.getElementById('rowsPerPage').value);
+  const start = (currentPage - 1) * rowsPerPage;
+  const end = start + rowsPerPage;
+  const pageData = filteredData.slice(start, end);
+  
+  // OTIMIZAÇÃO: Renderizar linhas com menos manipulação DOM
+  pageData.forEach(rowData => {
+    const id = rowData.id;
+    const nome = rowData.name;
+    const row = tbody.insertRow();
+    
+    // ID (NÃO EDITÁVEL)
+    const idCell = row.insertCell();
+    idCell.innerText = id;
+    
+    // Nome
+    const nameCell = row.insertCell();
+    
+    if (selected === 'adboards') {
+      nameCell.innerText = nome;
+    } else {
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.value = nome;
+      nameInput.oninput = (e) => {
+        const originalIndex = dataFiles[selected].findIndex(item => item[0] === id);
+        if (originalIndex !== -1) {
+          dataFiles[selected][originalIndex][1] = e.target.value;
+          rowData.name = e.target.value;
+        }
+      };
+      nameCell.appendChild(nameInput);
+    }
+    
+    // Colunas específicas para players
+    if (selected === 'players') {
+      const stats = playersStats[id] || {};
+      const positionName = stats.position_id ? (positionsMap[stats.position_id] || '-') : '-';
+      const teamName = stats.team_id ? (clubsMap[stats.team_id] || '-') : '-';
+      const countryName = stats.country_id ? (countriesMap[stats.country_id] || '-') : '-';
+      
+      row.insertCell().innerText = countryName;
+      row.insertCell().innerText = calculateAge(stats.dob) !== '-' ? `${calculateAge(stats.dob)}` : '-';
+      row.insertCell().innerText = positionName;
+      row.insertCell().innerText = stats.overall || '-';
+      row.insertCell().innerText = stats.potential || '-';
+      row.insertCell().innerText = teamName;
+      row.insertCell().innerText = stats.team_id || '-';
+    }
+    
+    // Colunas específicas para clubs - CORREÇÃO COMPLETA
+    if (selected === 'clubs') {
+      const countryId = clubCountryMap[id] || '';
+      const countryName = countryId ? (countriesMap[countryId] || '-') : '-';
+      // CORREÇÃO: O ID do estádio é o mesmo ID do clube
+      const stadiumId = id;
+      const stadiumName = stadiumsMap[stadiumId] || '-';
+      const rating = clubsRating[id] || '-';
+      
+      row.insertCell().innerText = countryName;
+      row.insertCell().innerText = stadiumId;
+      
+      const stadiumNameCell = row.insertCell();
+      const stadiumNameInput = document.createElement('input');
+      stadiumNameInput.type = 'text';
+      stadiumNameInput.value = stadiumName;
+      stadiumNameInput.oninput = (e) => {
+        // CORREÇÃO: Atualizar tanto no stadiumsMap quanto no dataFiles
+        stadiumsMap[stadiumId] = e.target.value;
+        
+        // Buscar e atualizar no array stadiums
+        let stadiumUpdated = false;
+        if (dataFiles['stadiums']) {
+          for (let i = 0; i < dataFiles['stadiums'].length; i++) {
+            if (dataFiles['stadiums'][i][0] === stadiumId) {
+              dataFiles['stadiums'][i][1] = e.target.value;
+              stadiumUpdated = true;
+              console.log(`Estádio atualizado no CSV: ${stadiumId} = ${e.target.value}`);
+              break;
+            }
+          }
+          
+          // Se o estádio não existe no CSV, adicioná-lo
+          if (!stadiumUpdated) {
+            dataFiles['stadiums'].push([stadiumId, e.target.value]);
+            console.log(`Estádio adicionado ao CSV: ${stadiumId} = ${e.target.value}`);
+          }
+        } else {
+          // Se não existe array de stadiums, criar um
+          dataFiles['stadiums'] = [[stadiumId, e.target.value]];
+          console.log(`CSV de estádios criado com: ${stadiumId} = ${e.target.value}`);
+        }
+        
+        // Atualizar o nome no rowData para refletir imediatamente
+        rowData.stadiumName = e.target.value;
+      };
+      stadiumNameCell.appendChild(stadiumNameInput);
+      
+      row.insertCell().innerText = rating;
+      
+      // Competições do clube (múltiplas)
+      const competitionIds = clubCompetitionMap[id] || [];
+      const competitionNames = competitionIds.length > 0 
+        ? competitionIds.map(compId => getCompetitionName(compId)).join(', ') 
+        : '-';
+      row.insertCell().innerText = competitionNames;
+    }
+    
+    // Colunas específicas para competitions
+    if (selected === 'competitions') {
+      const countryId = competitionCountryMap[id] || '';
+      const countryName = countryId ? (countriesMap[countryId] || '-') : '-';
+      row.insertCell().innerText = countryName;
+    }
+    
+    // Colunas específicas para adboards
+    if (selected === 'adboards') {
+      row.insertCell().innerText = rowData.folderName || '-';
+    }
+    
+    // Imagem para clubs e competitions
+    if (selected === 'clubs' || selected === 'competitions') {
+      const imgCell = row.insertCell();
+      const imgName = selected === 'clubs' ?
+        `club_logos/${id}.webp` :
+        `competition_logos/${id}.webp`;
+      
+      const imgContainer = document.createElement('div');
+      imgContainer.style.display = 'flex';
+      imgContainer.style.alignItems = 'center';
+      imgContainer.style.gap = '5px';
+      
+      const imgElem = document.createElement('img');
+      imgElem.width = 50;
+      imgElem.height = 50;
+      imgElem.style.objectFit = 'contain';
+      
+      // OTIMIZAÇÃO: Carregar imagens de forma assíncrona sem bloquear
+      if (imageCache.has(imgName)) {
+        imgElem.src = imageCache.get(imgName);
+      } else {
+        imgElem.alt = 'Loading...';
+        imgElem.style.opacity = '0.5';
+        
+        // OTIMIZAÇÃO: Usar requestIdleCallback para carregar imagens
+        const loadImage = () => {
+          const fileInZip = zip.file(imgName);
+          if (fileInZip) {
+            fileInZip.async('blob').then(blob => {
+              const url = URL.createObjectURL(blob);
+              imgElem.src = url;
+              imgElem.style.opacity = '1';
+              addToImageCache(imgName, url);
+            });
+          } else {
+            imgElem.alt = 'No Image';
+          }
+        };
+        
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(loadImage, { timeout: 1000 });
+        } else {
+          setTimeout(loadImage, 0);
+        }
+      }
+      
+      imgContainer.appendChild(imgElem);
+      
+      const addButton = document.createElement('button');
+      addButton.className = 'btn-add-image';
+      addButton.innerHTML = '<i class="fas fa-plus"></i>';
+      addButton.title = 'Adicionar/Substituir Imagem';
+      
+      const fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.accept = 'image/*';
+      fileInput.style.display = 'none';
+      fileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const blob = await file.arrayBuffer();
+          zip.file(imgName, blob);
+          const url = URL.createObjectURL(file);
+          imgElem.src = url;
+          addToImageCache(imgName, url);
+          imgElem.style.opacity = '1';
+        }
+      };
+      
+      addButton.onclick = () => fileInput.click();
+      imgContainer.appendChild(addButton);
+      imgContainer.appendChild(fileInput);
+      
+      imgCell.appendChild(imgContainer);
+    }
+    
+    // Imagem para adboards
+    if (selected === 'adboards') {
+      const imgCell = row.insertCell();
+      
+      const imgContainer = document.createElement('div');
+      imgContainer.style.display = 'flex';
+      imgContainer.style.alignItems = 'center';
+      imgContainer.style.gap = '5px';
+      
+      const imgElem = document.createElement('img');
+      imgElem.width = 50;
+      imgElem.height = 50;
+      imgElem.style.objectFit = 'contain';
+      
+      if (imageCache.has(rowData.fullPath)) {
+        imgElem.src = imageCache.get(rowData.fullPath);
+      } else {
+        imgElem.alt = 'Loading...';
+        imgElem.style.opacity = '0.5';
+        
+        const loadImage = () => {
+          const fileInZip = zip.file(rowData.fullPath);
+          if (fileInZip) {
+            fileInZip.async('blob').then(blob => {
+              const url = URL.createObjectURL(blob);
+              imgElem.src = url;
+              imgElem.style.opacity = '1';
+              addToImageCache(rowData.fullPath, url);
+            });
+          } else {
+            imgElem.alt = 'No Image';
+          }
+        };
+        
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(loadImage, { timeout: 1000 });
+        } else {
+          setTimeout(loadImage, 0);
+        }
+      }
+      
+      imgContainer.appendChild(imgElem);
+      
+      const editButton = document.createElement('button');
+      editButton.className = 'btn-add-image';
+      editButton.innerHTML = '<i class="fas fa-edit"></i>';
+      editButton.title = 'Editar Imagem';
+      editButton.onclick = () => editAdboardImage(rowData);
+      imgContainer.appendChild(editButton);
+      
+      imgCell.appendChild(imgContainer);
+    }
+  });
+  
+  if (filteredData.length === 0) {
+    const noResults = document.createElement('div');
+    noResults.className = 'no-results';
+    noResults.innerHTML = '<i class="fas fa-exclamation-circle"></i> Nenhum resultado encontrado';
+    fragment.appendChild(noResults);
+  } else {
+    table.appendChild(tbody);
+    fragment.appendChild(table);
+  }
+  
+  // OTIMIZAÇÃO: Atualizar DOM uma única vez
+  container.innerHTML = '';
+  container.appendChild(fragment);
+  renderPagination(rowsPerPage);
+}
+
+function editAdboardImage(adboardData) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    try {
+      const base64 = await readFileAsBase64(file);
+      zip.file(adboardData.fullPath, base64, { base64: true });
+      
+      // OTIMIZAÇÃO: Limpar cache de forma eficiente
+      const oldUrl = imageCache.get(adboardData.fullPath);
+      if (oldUrl && oldUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(oldUrl);
+      }
+      imageCache.delete(adboardData.fullPath);
+      
+      renderTable();
+      alert('Imagem atualizada com sucesso!');
+    } catch (error) {
+      console.error('Erro ao atualizar imagem:', error);
+      alert('Erro ao atualizar imagem: ' + error.message);
+    }
+  };
+  
+  input.click();
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function saveZip() {
+  if (!zip) {
+    alert('Nenhum arquivo ZIP carregado!');
+    return;
+  }
+  
+  // Atualizar arquivos CSV modificados
+  const tables = ['clubs', 'competitions', 'players', 'stadiums'];
+  tables.forEach(table => {
+    if (dataFiles[table]) {
+      const csvContent = dataFiles[table].map(row => row.join(',')).join('\n');
+      zip.file(`${table}.csv`, csvContent);
+      console.log(`Arquivo ${table}.csv salvo com ${dataFiles[table].length} linhas`);
+    }
+  });
+  
+  zip.generateAsync({ type: 'blob' }).then(content => {
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(content);
+    a.href = url;
+    a.download = `data_pack_modified_${is1998Mode ? '1998' : 'normal'}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alert('ZIP salvo com sucesso! Verifique o stadiums.csv no arquivo salvo.');
+  });
+}
+
+function toggleTheme() {
+  isDarkMode = !isDarkMode;
+  document.body.classList.toggle('dark-mode', isDarkMode);
+  localStorage.setItem('darkMode', isDarkMode);
+  document.getElementById('toggleThemeBtn').innerHTML = isDarkMode ? 
+    '<i class="fas fa-sun"></i> Modo Claro' : 
+    '<i class="fas fa-moon"></i> Modo Escuro';
+}
+function addNewRow() {
+  const selected = document.getElementById('selectTable').value;
+  if (selected !== 'competitions') return;
+  
+  if (!dataFiles['competitions']) dataFiles['competitions'] = [];
+  
+  const currentCompetitions = is1998Mode ? missingCompetitions1998 : missingCompetitions;
+  const existingIds = new Set(dataFiles['competitions'].map(comp => comp[0]));
+  const competitionsToAdd = currentCompetitions.filter(comp => !existingIds.has(comp[0]));
+  
+  if (competitionsToAdd.length === 0) {
+    alert(`Todas as competições ${is1998Mode ? '1998' : ''} já estão adicionadas!`);
+    return;
+  }
+  
+  dataFiles['competitions'] = dataFiles['competitions'].concat(competitionsToAdd);
+  
+  alert(`${competitionsToAdd.length} competições ${is1998Mode ? '1998' : ''} adicionadas com sucesso!`);
+  renderTable();
+}
+</script>
+</body>
+</html>
