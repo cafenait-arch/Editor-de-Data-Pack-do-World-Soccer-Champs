@@ -27,6 +27,11 @@
       <span>Escolher Arquivo ZIP 1998</span>
       <input type="file" id="zipInput1998" accept=".zip" class="file-upload-input" />
     </label>
+    <label class="file-upload-label" style="margin-left: 10px;">
+      <i class="fas fa-file-archive"></i>
+      <span>Escolher Arquivo ZIP 2006</span>
+      <input type="file" id="zipInput2006" accept=".zip" class="file-upload-input" />
+    </label>
     <p class="upload-hint">Selecione o arquivo ZIP do data pack para começar</p>
   </div>
 </div>
@@ -117,6 +122,7 @@
 </button>
 
 <script>let is1998Mode = false;
+let is2006Mode = false;
 let zip;
 let SQL;
 let db;
@@ -234,6 +240,39 @@ const legends1998 = [
   "890400010,Ali Nurmanov",
   "890400024,Maui Bernard",
   "890400030,Adriano Imperador"
+].map(item => item.split(','));
+
+const legends2006 = [
+  "890400001,Ronaldinho Gaúcho",
+  "890400002,Kaká",
+  "890400003,Adriano",
+  "890400004,Robinho",
+  "890400005,Juninho Pernambucano",
+  "890400006,Cafú",
+  "890400007,Roberto Carlos",
+  "890400008,Lucio",
+  "890400009,Juan",
+  "890400010,Dida",
+  "890400011,Emerson",
+  "890400012,Zé Roberto",
+  "890400013,Gilberto Silva",
+  "890400014,Cicinho",
+  "890400015,Maicon",
+  "890400016,Ricardinho",
+  "890400017,Julio Baptista",
+  "890400018,Fred",
+  "890400019,Renato Augusto",
+  "890400020,Rogério Ceni",
+  "890400021,Thierry Henry",
+  "890400022,Zinédine Zidane",
+  "890400023,Fabio Cannavaro",
+  "890400024,Gianluigi Buffon",
+  "890400025,Francesco Totti",
+  "890400026,Steven Gerrard",
+  "890400027,Frank Lampard",
+  "890400028,Wayne Rooney",
+  "890400029,Cristiano Ronaldo",
+  "890400030,Lionel Messi"
 ].map(item => item.split(','));
 
 const missingCompetitions = [
@@ -563,6 +602,10 @@ const missingCompetitions1998 = [
   ""
 ].map(item => item.split(','));
 
+const missingCompetitions2006 = [
+  ""
+].map(item => item.split(','));
+
 let isDarkMode = localStorage.getItem('darkMode') === 'true';
 
 // Aplicar modo escuro se estava ativado
@@ -675,11 +718,19 @@ document.getElementById('selectTable').addEventListener('change', function() {
 
 document.getElementById('zipInput1998').addEventListener('change', async (e) => {
   is1998Mode = true;
+  is2006Mode = false;
+  await handleZipUpload(e);
+});
+
+document.getElementById('zipInput2006').addEventListener('change', async (e) => {
+  is1998Mode = false;
+  is2006Mode = true;
   await handleZipUpload(e);
 });
 
 document.getElementById('zipInput').addEventListener('change', async (e) => {
   is1998Mode = false;
+  is2006Mode = false;
   await handleZipUpload(e);
 });
 
@@ -712,7 +763,10 @@ async function handleZipUpload(e) {
     
     await loadAdboardsData();
     
-    const dbFileName = is1998Mode ? 'template_1998.db' : 'template.db';
+    let dbFileName = 'template.db';
+    if (is1998Mode) dbFileName = 'template_1998.db';
+    else if (is2006Mode) dbFileName = 'template_2006.db';
+    
     try {
       const response = await fetch(dbFileName);
       const dbBuffer = await response.arrayBuffer();
@@ -726,7 +780,11 @@ async function handleZipUpload(e) {
     document.getElementById('initialUpload').style.display = 'none';
     document.getElementById('mainControls').style.display = 'block';
     uploadLabel.innerHTML = `<i class="fas fa-check"></i> ${file.name}`;
-    setTimeout(() => alert(`ZIP carregado com sucesso! Modo ${is1998Mode ? '1998' : 'normal'} ativado.`), 300);
+    
+    let modeText = 'normal';
+    if (is1998Mode) modeText = '1998';
+    else if (is2006Mode) modeText = '2006';
+    setTimeout(() => alert(`ZIP carregado com sucesso! Modo ${modeText} ativado.`), 300);
   } catch (error) {
     uploadLabel.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Erro ao carregar';
     console.error('Error loading ZIP:', error);
@@ -935,7 +993,7 @@ function getCompetitionName(competitionId) {
 function calculateAge(dob) {
   if (!dob) return '-';
   
-  const cacheKey = `${dob}_${is1998Mode}`;
+  const cacheKey = `${dob}_${is1998Mode}_${is2006Mode}`;
   if (ageCache.has(cacheKey)) {
     return ageCache.get(cacheKey);
   }
@@ -947,7 +1005,10 @@ function calculateAge(dob) {
   const month = parseInt(dobStr.substring(4, 6)) - 1;
   const day = parseInt(dobStr.substring(6, 8));
   
-  const referenceDate = is1998Mode ? new Date(1999, 0, 1) : new Date();
+  let referenceDate = new Date();
+  if (is1998Mode) referenceDate = new Date(1999, 0, 1);
+  else if (is2006Mode) referenceDate = new Date(2007, 0, 1);
+  
   const birthDate = new Date(year, month, day);
   let age = referenceDate.getFullYear() - birthDate.getFullYear();
   
@@ -1297,7 +1358,11 @@ function renderPagination(rowsPerPage) {
 function addLegends() {
   if (!dataFiles['players']) dataFiles['players'] = [];
   
-  const currentLegends = is1998Mode ? legends1998 : legends;
+  let currentLegends = legends;
+  let modeText = '';
+  if (is1998Mode) { currentLegends = legends1998; modeText = '1998'; }
+  else if (is2006Mode) { currentLegends = legends2006; modeText = '2006'; }
+  
   const existingIds = new Set(dataFiles['players'].map(player => player[0]));
   const legendsToAdd = currentLegends.filter(legend => !existingIds.has(legend[0]));
   
@@ -1308,7 +1373,7 @@ function addLegends() {
   
   dataFiles['players'] = dataFiles['players'].concat(legendsToAdd);
   
-  alert(`${legendsToAdd.length} lendas ${is1998Mode ? '1998' : ''} adicionadas com sucesso!`);
+  alert(`${legendsToAdd.length} lendas ${modeText} adicionadas com sucesso!`);
   renderTable();
 }
 
@@ -1756,7 +1821,10 @@ function saveZip() {
     const a = document.createElement('a');
     const url = URL.createObjectURL(content);
     a.href = url;
-    a.download = `data_pack_modified_${is1998Mode ? '1998' : 'normal'}.zip`;
+    let modeText = 'normal';
+    if (is1998Mode) modeText = '1998';
+    else if (is2006Mode) modeText = '2006';
+    a.download = `data_pack_modified_${modeText}.zip`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1779,18 +1847,22 @@ function addNewRow() {
   
   if (!dataFiles['competitions']) dataFiles['competitions'] = [];
   
-  const currentCompetitions = is1998Mode ? missingCompetitions1998 : missingCompetitions;
+  let currentCompetitions = missingCompetitions;
+  let modeText = '';
+  if (is1998Mode) { currentCompetitions = missingCompetitions1998; modeText = '1998'; }
+  else if (is2006Mode) { currentCompetitions = missingCompetitions2006; modeText = '2006'; }
+  
   const existingIds = new Set(dataFiles['competitions'].map(comp => comp[0]));
   const competitionsToAdd = currentCompetitions.filter(comp => !existingIds.has(comp[0]));
   
   if (competitionsToAdd.length === 0) {
-    alert(`Todas as competições ${is1998Mode ? '1998' : ''} já estão adicionadas!`);
+    alert(`Todas as competições ${modeText} já estão adicionadas!`);
     return;
   }
   
   dataFiles['competitions'] = dataFiles['competitions'].concat(competitionsToAdd);
   
-  alert(`${competitionsToAdd.length} competições ${is1998Mode ? '1998' : ''} adicionadas com sucesso!`);
+  alert(`${competitionsToAdd.length} competições ${modeText} adicionadas com sucesso!`);
   renderTable();
 }
 </script>
