@@ -1015,7 +1015,7 @@ function calculateAge(dob) {
   
   let referenceDate = new Date();
   if (is1998Mode) referenceDate = new Date(1999, 0, 1);
-  else if (is2006Mode) referenceDate = new Date(2007, 0, 1);
+  else if (is2006Mode) referenceDate = new Date(2006, 0, 1);
   
   const birthDate = new Date(year, month, day);
   let age = referenceDate.getFullYear() - birthDate.getFullYear();
