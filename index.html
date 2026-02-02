@@ -142,6 +142,7 @@ let countriesMap = {};
 let adboardsData = [];
 const ageCache = new Map();
 let clubsRating = {};
+let clubsYouthRating = {};
 let competitionCountryMap = {};
 let clubCompetitionMap = {};
 
@@ -841,6 +842,7 @@ async function buildMappingsFromDB() {
   clubStadiumMap = {};
   clubCountryMap = {};
   clubsRating = {};
+  clubsYouthRating = {};
   competitionCountryMap = {};
   clubCompetitionMap = {};
   
@@ -895,11 +897,12 @@ async function buildMappingsFromDB() {
   }
   
   try {
-    const clubsRatingResult = db.exec("SELECT id, ratingOVR FROM Club");
+    const clubsRatingResult = db.exec("SELECT id, ratingOVR, Youth FROM Club");
     if (clubsRatingResult.length > 0) {
       clubsRatingResult[0].values.forEach(row => {
-        const [clubId, rating] = row;
+        const [clubId, rating, youth] = row;
         clubsRating[clubId] = rating;
+        clubsYouthRating[clubId] = youth;
       });
     }
   } catch (error) {
@@ -1244,6 +1247,8 @@ function applySort() {
         return selected === 'clubs' ? (countriesMap[clubCountryMap[id]] || '').toLowerCase() : '';
       case 'rating':
         return selected === 'clubs' ? parseInt(clubsRating[id] || '0') : 0;
+      case 'youthRating':
+        return selected === 'clubs' ? parseInt(clubsYouthRating[id] || '0') : 0;
       case 'clubCompetition':
         if (selected === 'clubs') {
           const competitionIds = clubCompetitionMap[id] || [];
@@ -1465,6 +1470,7 @@ function renderTable() {
     headerRow.appendChild(createSortableHeader('Estádio ID', 'stadiumId'));
     headerRow.appendChild(createSortableHeader('Nome do Estádio', 'stadiumName'));
     headerRow.appendChild(createSortableHeader('Rating', 'rating'));
+    headerRow.appendChild(createSortableHeader('Youth', 'youthRating'));
     headerRow.appendChild(createSortableHeader('Competição', 'clubCompetition'));
   }
   
@@ -1599,6 +1605,10 @@ function renderTable() {
       stadiumNameCell.appendChild(stadiumNameInput);
       
       row.insertCell().innerText = rating;
+      
+      // Youth Rating
+      const youthRating = clubsYouthRating[id] || '-';
+      row.insertCell().innerText = youthRating;
       
       // Competições do clube (múltiplas)
       const competitionIds = clubCompetitionMap[id] || [];
