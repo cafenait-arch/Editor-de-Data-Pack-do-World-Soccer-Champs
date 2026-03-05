@@ -1130,11 +1130,11 @@ function applyFilters(selected) {
   }
   
   const filterTeamName = document.getElementById('filterTeamName')?.value.toLowerCase() || '';
-  const filterTeamId = document.getElementById('filterTeamId')?.value.toLowerCase() || '';
+  const filterTeamId = document.getElementById('filterTeamId')?.value || '';
   const filterPosition = document.getElementById('filterPosition')?.value.toLowerCase() || '';
   const filterCountry = document.getElementById('filterCountry')?.value.toLowerCase() || '';
   const filterMaxOverall = document.getElementById('filterMaxOverall')?.value;
-  const filterStadiumId = document.getElementById('filterStadiumId')?.value.toLowerCase() || '';
+  const filterStadiumId = document.getElementById('filterStadiumId')?.value || '';
   const filterStadiumName = document.getElementById('filterStadiumName')?.value.toLowerCase() || '';
   const filterClubCountry = document.getElementById('filterClubCountry')?.value.toLowerCase() || '';
   const filterClubCompetition = document.getElementById('filterClubCompetition')?.value.toLowerCase() || '';
@@ -1145,17 +1145,20 @@ function applyFilters(selected) {
     const id = item.id.toString();
     const nome = item.name.toString();
     
-    if (filterId && id !== filterId) return false;
+    // Filtro de ID principal (agora usando includes para ser mais flexível)
+    if (filterId && !id.includes(filterId)) return false;
     if (filterNome && !nome.toLowerCase().includes(filterNome)) return false;
     
     if (selected === 'players') {
       const stats = playersStats[item.id] || {};
       
       if (filterTeamName || filterTeamId) {
-        const teamId = stats.team_id || '';
+        const teamId = (stats.team_id || '').toString(); // Conversão crucial para String
         const teamName = clubsMap[teamId] || '';
+        
         if (filterTeamName && !teamName.toLowerCase().includes(filterTeamName)) return false;
-        if (filterTeamId && teamId !== filterTeamId) return false;
+        // Correção: Usando includes para evitar erro de tipo e permitir busca parcial
+        if (filterTeamId && !teamId.includes(filterTeamId)) return false;
       }
       
       if (filterPosition) {
@@ -1168,7 +1171,6 @@ function applyFilters(selected) {
         if (!countryName.toLowerCase().includes(filterCountry)) return false;
       }
       
-      // FILTRO: Overall Máximo
       if (filterMaxOverall) {
         const playerOverall = parseInt(stats.overall || '0');
         const maxOverall = parseInt(filterMaxOverall);
@@ -1178,10 +1180,10 @@ function applyFilters(selected) {
     
     if (selected === 'clubs') {
       if (filterStadiumId || filterStadiumName) {
-        // CORREÇÃO: O ID do estádio é o mesmo ID do clube
-        const stadiumId = id; // Usar o ID do clube como ID do estádio
+        const stadiumId = id; // No seu código, ID do Estádio = ID do Clube
         const stadiumName = stadiumsMap[stadiumId] || '';
-        if (filterStadiumId && stadiumId !== filterStadiumId) return false;
+        
+        if (filterStadiumId && !stadiumId.includes(filterStadiumId)) return false;
         if (filterStadiumName && !stadiumName.toLowerCase().includes(filterStadiumName)) return false;
       }
       
@@ -1214,6 +1216,7 @@ function applyFilters(selected) {
     return true;
   });
 }
+
 
 // OTIMIZAÇÃO: Ordenação otimizada
 function applySort() {
